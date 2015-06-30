@@ -1,0 +1,6 @@
+# Ignore Ruby management helpers.
+.ruby-gemset
+.ruby-version
+
+# Ignore any gem build artifacts.
+*.gem
