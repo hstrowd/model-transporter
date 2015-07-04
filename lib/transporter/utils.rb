@@ -9,7 +9,7 @@ module Transporter
     end
 
     def self.load_json_file(file_path)
-      return unless File.exists?(file_path)
+      return if file_path.nil? || !File.exists?(file_path)
 
       JSON.parse(File.read(file_path))
     end

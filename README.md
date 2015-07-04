@@ -11,19 +11,12 @@ This gem extracts the logic required to traverse an ActiveRecord dependency tree
 
 This gem adds a ```model_transport:load_from``` rake task. This tasks takes advantage of the following environment variables, when present:
 
-* ```EXTRACTED_RECORDS_FILE```: The path to a file containing the records that have been or should be extracted. This file should be a JSON formatted hash in which the keys are Model name and the values are hashes that map the source data store's record IDs to the target data store's record IDs. For example, the following would be a valid saple of the content in this file:
+* ```TRANSPORTED_RECORDS_FILE```: The path to a file containing the records that have been or should be transported. This file should be a JSON formatted hash in which the keys are Model name and the values are record IDs from the source data store. For example, the following would be a valid saple of the content in this file:
 
 ```javascript
 {
-  "User": {
-    "123": 1,
-    "234": 3
-  },
-  "Post": {
-    "456": 7,
-    "567": 13,
-    "987": 6
-  }
+  "User": [ 123, 234 ],
+  "Post": [ 456, 567, 987 ]
 }
 ```
 
@@ -34,17 +27,17 @@ This gem adds a ```model_transport:load_from``` rake task. This tasks takes adva
 * ```SOURCE_DB_PASSWORD```: The password to be used when connecting to the source data store.
 * ```DEBUG```: An indicator for whether or not debug output should be printed. Values of ```true```, ```TRUE```, ```t```, ```T```, or ```1``` will result in debug output being printed.
 
-The output of this rake task will included an updated version of the contents of the ```ETRACTED_RECORDS_FILE``` with the newly extracted records merged into it.
+The output of this rake task will included an updated version of the contents of the ```TRANSPORTED_RECORDS_FILE``` with the newly transported records merged into it.
 
 
 ### Usage Notes
 
-For the first service's transport, the ```EXTRACTED_RECORDS_FILE``` content should contain the records that need to be extracted. For all subsequent services, the ```EXTRACTED_RECORDS_FILE``` content should be the result of the previous service's transport.
+For the first service's transport, the ```TRANSPORTED_RECORDS_FILE``` content should contain the records that need to be transported. For all subsequent services, the ```TRANSPORTED_RECORDS_FILE``` content should be the result of the previous service's transport.
 
 The following is an example of how this rake task can be invoked:
 
 ```bash
-$ bundle exec rake model_transport:load_from EXTRACTED_RECORDS_FILE=/tmp/extracted_records.json SOURCE_DB_NAME=myapp_db SOURCE_DB_HOST=staging.myapp.com SOURCE_DB_USER=myapp_user SOURCE_DB_PASSWORD=myapp_password
+$ bundle exec rake model_transport:load_from TRANSPORTED_RECORDS_FILE=/tmp/transported_records.json SOURCE_DB_NAME=myapp_db SOURCE_DB_HOST=staging.myapp.com SOURCE_DB_USER=myapp_user SOURCE_DB_PASSWORD=myapp_password
 ```
 
 
@@ -79,21 +72,25 @@ To install this gem into a Rails or Rack application take the following steps:
         ```ruby
         require 'transporter'
 
-        # Defines the logic used to identify the records to be extracted, based on the records that have
-        # already been extracted from other services.
+        # Defines the logic used to identify the records to be transported, based on the records that have
+        # already been transported from other services.
         Transporter.configure_transporter do |config|
-          config.configure_records_to_extract do |prev_extracted_records|
-            next unless prev_extracted_records.is_a?(Hash)
-            extracted_users = prev_extracted_records['User'].try(:keys)
-            next unless extracted_users
+          config.configure_records_to_transport do |transport_scope, prev_transported_records|
+            transported_users = prev_transported_records['User']
+            next unless transported_users
 
-            Post.where(user_id: extracted_users)
+            transport_scope[User] = transported_users
           end
         end
         ```
 
-    * The config object exposes the ```configure_records_to_extract``` method to allow you to identify the appropriate records to extract from the source data store.
-    * The argument passed into this block is the previously extracted set of records (see the ```EXTRACTED_RECORDS_FILE``` specification above).
+    * The config object exposes the ```configure_records_to_transport``` method to allow you to identify the appropriate records to extract from the source data store.
+    * The arguments passed into this block are the following
+        * A scope definition hash for the transport to be performed. The keys in this hash are the classes being exported and the values are the IDs for the records of that class to be exported.
+	* The previously transported set of records (see the ```TRANSPORTED_RECORDS_FILE``` specification above).
+    * The scope definition will be used to ensure the transport is restricted to just the specified records.
+        * For example if the traversal encounters another instance of one of the classes contained in the scope definition, it will not export that record.
+	* This is done to prevent pulling in the entire data set.
     * All models will be connected to the source data store at the time of executing this block, so you do not need to handle this yourself.
 1. Pull the ```model-transporter``` rake tasks into the application.
     * This can be done by adding the following logic to the ```Rakefile``` for the application:
