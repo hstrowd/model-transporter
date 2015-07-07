@@ -34,11 +34,17 @@ namespace :model_transport do
 
     puts "Loading data from #{source_db_desc[:database]} at #{source_db_desc[:host]} into #{target_db_desc[:database]} at #{target_db_desc[:host]}" if debug
 
+    start_time = Time.now
+    puts "Starting transport at #{start_time.to_s}."
+
     result = Transporter::Result.new
     records.each do |record|
       puts "Transporting #{record.class.to_s} #{record.id}..." if debug
       record.transport(target_db_desc, result)
     end
+
+    end_time = Time.now
+    puts "Completed transport at #{end_time.to_s} (duration: #{(end_time - start_time).to_i} seconds)."
 
     puts "RESULTS:\n=====\n"
     puts result.created_records.to_json

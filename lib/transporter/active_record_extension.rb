@@ -62,7 +62,13 @@ module Transporter
       def transport_associated_records(target_db, result)
         created_records = {}
 
+        acceptable_associations = Transporter.config.scope.associations_for(self.class)
         reflections.each do |association_name, association_desc|
+          if acceptable_associations && !acceptable_associations.include?(association_name)
+            ActiveRecordExtension.log("Skipping #{association_name} for #{self.class.to_s} becaues it is not in scope.")
+            next
+          end
+
           ActiveRecordExtension.log("Retrieving #{association_name} for #{self.class.to_s} #{id}.")
           association = send(association_name)
           begin
@@ -74,15 +80,14 @@ module Transporter
           if association_desc.collection?
             # Don't transport records outside of the defined scope.
             association_class = association.first.class if association_class.nil?
-            acceptable_records = Transporter.config.scope_for(association_class)
+            acceptable_records = Transporter.config.scope.records_for(association_class)
 
             if acceptable_records.present?
               association = association.where(id: acceptable_records)
-              ActiveRecordExtension.log("Limiting #{self.class.to_s} #{association_name} to only the scope for this transport.")
+              ActiveRecordExtension.log("Limiting #{self.class.to_s} #{association_name} to only the specified scope.")
             end
 
-            # TODO: Pull this limit out as a config attribute.
-            association.limit(25).each do |associated_record|
+            association.limit(Transporter.config.max_association_count).each do |associated_record|
               associated_record.transport(target_db, result)
             end
           else
@@ -90,9 +95,9 @@ module Transporter
 
             # Don't transport records outside of the defined scope.
             association_class = association.class if association_class.nil?
-            acceptable_records = Transporter.config.scope_for(association_class)
+            acceptable_records = Transporter.config.scope.records_for(association_class)
             if acceptable_records.present? && !acceptable_records.include?(association.id)
-              ActiveRecordExtension.log("Skipping #{self.class.to_s} #{association_name} #{association.id} because it is not in scope for this transport.")
+              ActiveRecordExtension.log("Skipping #{self.class.to_s} #{association_name} #{association.id} because it is not in scope.")
               next
             end
 

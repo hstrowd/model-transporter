@@ -11,7 +11,7 @@ This gem extracts the logic required to traverse an ActiveRecord dependency tree
 
 This gem adds a ```model_transport:load_from``` rake task. This tasks takes advantage of the following environment variables, when present:
 
-* ```TRANSPORTED_RECORDS_FILE```: The path to a file containing the records that have been or should be transported. This file should be a JSON formatted hash in which the keys are Model name and the values are record IDs from the source data store. For example, the following would be a valid saple of the content in this file:
+* ```TRANSPORTED_RECORDS_FILE```: The path to a file containing the records that have been or should be transported. This file should be a JSON formatted hash in which the keys are Model name and the values are record IDs from the source data store. For example, the following would be a valid sample of the content in this file:
 
 ```javascript
 {
@@ -75,22 +75,37 @@ To install this gem into a Rails or Rack application take the following steps:
         # Defines the logic used to identify the records to be transported, based on the records that have
         # already been transported from other services.
         Transporter.configure_transporter do |config|
-          config.configure_records_to_transport do |transport_scope, prev_transported_records|
+          config.configure_records_to_transport do |scope, prev_transported_records|
+            next unless prev_transported_records.is_a?(Hash) || prev_transported_records['User'].nil?
             transported_users = prev_transported_records['User']
-            next unless transported_users
+            travelsable_post_associations = [
+              :comments,
+	      :tags
+            ]
+            travelsable_comment_associations = [ ]  # Don't pull comment authors.
 
-            transport_scope[User] = transported_users
+            scope.configure_class(User, { ids: transported_users })
+            scope.configure_class(Post, { associations: travelsable_post_associations })
+            scope.configure_class(Comment, { associations: travelsable_comment_associations })
           end
         end
         ```
 
     * The config object exposes the ```configure_records_to_transport``` method to allow you to identify the appropriate records to extract from the source data store.
     * The arguments passed into this block are the following
-        * A scope definition hash for the transport to be performed. The keys in this hash are the classes being exported and the values are the IDs for the records of that class to be exported.
+        * A scope definition object (see explanation below).
 	* The previously transported set of records (see the ```TRANSPORTED_RECORDS_FILE``` specification above).
-    * The scope definition will be used to ensure the transport is restricted to just the specified records.
-        * For example if the traversal encounters another instance of one of the classes contained in the scope definition, it will not export that record.
-	* This is done to prevent pulling in the entire data set.
+    * The scope definition object exposes a ```configure_class``` method, allowing you to configure the model traversal that will be performed on a per class basis. This method expects the following two parameters:
+        * The ActiveRecord class to be configured.
+	* A hash defining the traversal logic to be used. The following keys are currently supported:
+	    * ids:
+	        * The set of IDs that will be transported from the source data store to the target data store.
+		* This serves as the seed data for the transport.
+		* This is also used to limit the scope of the transport.
+		* If the traversal encounters an instance of this classes with an ID not in this set, it will not export that record.
+	    * associations:
+	        * The associations on this model, as symbolized association names, that should included in the traversal.
+		* All other associations will be skipped. This allows you to limit the scope of the traversal and prevent the transport from pulling in the entire data store.
     * All models will be connected to the source data store at the time of executing this block, so you do not need to handle this yourself.
 1. Pull the ```model-transporter``` rake tasks into the application.
     * This can be done by adding the following logic to the ```Rakefile``` for the application:

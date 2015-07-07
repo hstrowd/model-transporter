@@ -1,10 +1,14 @@
+require 'transporter/scope'
+
 module Transporter
   class Config
-    attr_reader :records_to_transport, :transport_scope
+    attr_accessor :max_association_count
+    attr_reader :records_to_transport, :scope
 
     def initialize
+      @max_association_count = 25
       @records_to_transport = nil
-      @transport_scope = {}
+      @scope = Scope.new
     end
 
     def configure_records_to_transport(&block)
@@ -16,16 +20,9 @@ module Transporter
         raise "No proc defined for extracting records to be transported. Please configure this as port of the environment initialization."
       end
 
-      @records_to_transport.call(@transport_scope, prev_transported_records)
+      @records_to_transport.call(@scope, prev_transported_records)
 
-      records = @transport_scope.collect do |klass, ids|
-        klass.where(id: ids)
-      end
-      records.flatten
-    end
-
-    def scope_for(klass)
-      @transport_scope[klass]
+      records = @scope.seed_records
     end
   end
 end
