@@ -31,10 +31,15 @@ module Transporter
         # It is insufficient to use `new` here in case there are
         # initialization callbacks that will not be fulfilled.
         new_object = self.dup
-        new_object.assign_attributes(attributes, without_protection: true)
+        begin
+          new_object.assign_attributes(attributes, without_protection: true)
+        rescue ArgumentError => e
+          # Newer versions of assign_attributes do not support the second options parameter.
+          new_object.assign_attributes(attributes)
+        end
 
         ActiveRecordExtension.log("Transporting #{klass.to_s} #{id} to target DB.")
-        connection.execute("SET foreign_key_checks = 0;")
+        klass.connection.execute("SET foreign_key_checks = 0;")
         begin
           # Note: I tried to use skip_callback and the validate option on save!, but this did not work with the complex set of
           #   callbacks we have in place. As a fallback, I decided to use this gem instead.
@@ -43,7 +48,7 @@ module Transporter
           # nil indicates that the record failed to be transported.
           return { klass.to_s => { id => nil } }
         ensure
-          connection.execute("SET foreign_key_checks = 1;")
+          klass.connection.execute("SET foreign_key_checks = 1;")
         end
 
         result.add_created_record(klass, id)
@@ -60,16 +65,17 @@ module Transporter
       private
 
       def transport_associated_records(target_db, result)
+        klass = self.class
         created_records = {}
 
-        acceptable_associations = Transporter.config.scope.associations_for(self.class)
-        reflections.each do |association_name, association_desc|
+        acceptable_associations = Transporter.config.scope.associations_for(klass)
+        klass.reflections.each do |association_name, association_desc|
           if acceptable_associations && !acceptable_associations.include?(association_name)
-            ActiveRecordExtension.log("Skipping #{association_name} for #{self.class.to_s} becaues it is not in scope.")
+            ActiveRecordExtension.log("Skipping #{association_name} for #{klass.to_s} becaues it is not in scope.")
             next
           end
 
-          ActiveRecordExtension.log("Retrieving #{association_name} for #{self.class.to_s} #{id}.")
+          ActiveRecordExtension.log("Retrieving #{association_name} for #{klass.to_s} #{id}.")
           association = send(association_name)
           begin
             association_class = association_desc.klass
@@ -84,7 +90,7 @@ module Transporter
 
             if acceptable_records.present?
               association = association.where(id: acceptable_records)
-              ActiveRecordExtension.log("Limiting #{self.class.to_s} #{association_name} to only the specified scope.")
+              ActiveRecordExtension.log("Limiting #{klass.to_s} #{association_name} to only the specified scope.")
             end
 
             association.limit(Transporter.config.max_association_count).each do |associated_record|
@@ -97,7 +103,7 @@ module Transporter
             association_class = association.class if association_class.nil?
             acceptable_records = Transporter.config.scope.records_for(association_class)
             if acceptable_records.present? && !acceptable_records.include?(association.id)
-              ActiveRecordExtension.log("Skipping #{self.class.to_s} #{association_name} #{association.id} because it is not in scope.")
+              ActiveRecordExtension.log("Skipping #{klass.to_s} #{association_name} #{association.id} because it is not in scope.")
               next
             end
 

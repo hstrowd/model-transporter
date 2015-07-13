@@ -17,7 +17,7 @@ module Transporter
 
       @scoped_classes.each do |klass, config|
         next unless config[:ids]
-        seed_records << klass.where(id: config[:ids]).compact
+        seed_records << klass.where(id: config[:ids]).to_a.compact
       end
       
       return seed_records.flatten
